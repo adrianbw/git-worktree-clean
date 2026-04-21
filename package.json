@@ -1,0 +1,13 @@
+{
+  "name": "git-worktree-clean",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@inquirer/prompts": "^8"
+  },
+  "devDependencies": {
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}
