@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@inquirer/prompts": "^8"
-  },
+  "packageManager": "pnpm@9.15.0",
   "devDependencies": {
     "tsx": "^4",
     "typescript": "^5"

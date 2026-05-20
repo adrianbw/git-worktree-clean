@@ -3,4 +3,6 @@ export interface Worktree {
   head: string;
   branch: string | null;
   isDirty: boolean;
+  lockReason: string | null;
+  prMerged: boolean;
 }

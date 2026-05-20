@@ -18,7 +18,7 @@ cd git-worktree-clean
 ./install.sh
 ```
 
-This installs npm dependencies, then symlinks `bin/git-worktree-clean` into `~/.local/bin/`. Make sure `~/.local/bin` is on your `PATH`.
+This installs dependencies with `pnpm`, then symlinks `bin/git-worktree-clean` into `~/.local/bin/`. Make sure `~/.local/bin` is on your `PATH`. Requires [pnpm](https://pnpm.io/installation) (or corepack).
 
 ## Usage
 
