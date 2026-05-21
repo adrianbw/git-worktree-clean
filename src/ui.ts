@@ -5,19 +5,36 @@ export type TuiResult =
   | { type: "open"; worktree: Worktree }
   | { type: "quit" };
 
-const HEADER =
-  "Select worktrees (↑/↓ move, space toggle, o open, enter confirm, q quit):";
+const colorEnabled =
+  !process.env.NO_COLOR && process.stderr.isTTY;
+
+const c = (code: string, s: string) =>
+  colorEnabled ? `\x1b[${code}m${s}\x1b[0m` : s;
+
+const dim = (s: string) => c("2", s);
+const bold = (s: string) => c("1", s);
+const cyan = (s: string) => c("96", s);
+const green = (s: string) => c("32", s);
+const yellow = (s: string) => c("33", s);
+const red = (s: string) => c("31", s);
+
+const HEADER = dim(
+  "Select worktrees (↑/↓ move, space toggle, o open, enter confirm, q quit):",
+);
 
 function formatRow(wt: Worktree, isCursor: boolean, isSelected: boolean): string {
   const tags: string[] = [];
-  if (wt.isDirty) tags.push("⚠ dirty");
-  if (wt.lockReason !== null) tags.push("🔒 locked");
-  if (wt.prMerged) tags.push("✓ merged");
+  if (wt.isDirty) tags.push(yellow("⚠ dirty"));
+  if (wt.lockReason !== null) tags.push(red("🔒 locked"));
+  if (wt.prMerged) tags.push(green("✓ merged"));
   const suffix = tags.length ? ` ${tags.join(" ")}` : "";
-  const label = `${wt.branch ?? "(detached)"}${suffix}`;
-  const cursor = isCursor ? "❯" : " ";
-  const box = isSelected ? "[x]" : "[ ]";
-  return `${cursor} ${box} ${label}`;
+
+  const branchText = wt.branch ?? dim("(detached)");
+  const label = isCursor && wt.branch ? bold(branchText) : branchText;
+
+  const cursor = isCursor ? cyan("❯") : " ";
+  const box = isSelected ? green("[x]") : dim("[ ]");
+  return `${cursor} ${box} ${label}${suffix}`;
 }
 
 export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {

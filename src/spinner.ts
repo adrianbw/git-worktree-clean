@@ -1,6 +1,14 @@
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const INTERVAL = 80;
 
+const colorEnabled = !process.env.NO_COLOR && process.stderr.isTTY;
+const c = (code: string, s: string) =>
+  colorEnabled ? `\x1b[${code}m${s}\x1b[0m` : s;
+const SYM_SPIN = (s: string) => c("36", s); // cyan
+const SYM_OK = c("32", "✓"); // green
+const SYM_FAIL = c("31", "✗"); // red
+const SYM_WARN = c("33", "⚠"); // yellow
+
 export interface SpinnerLine {
   update(text: string): void;
   succeed(text: string): void;
@@ -31,7 +39,7 @@ export function createSpinnerGroup() {
     for (const line of lines) {
       const prefix = line.done
         ? line.symbol!
-        : FRAMES[line.frame % FRAMES.length];
+        : SYM_SPIN(FRAMES[line.frame % FRAMES.length]);
       if (!line.done) line.frame++;
       // Clear line, write content
       process.stderr.write(`\x1b[2K  ${prefix} ${line.text}\n`);
@@ -55,7 +63,7 @@ export function createSpinnerGroup() {
     const entry = { text, frame: 0, done: false, symbol: null as string | null };
     lines.push(entry);
     // Print a blank line to reserve space
-    process.stderr.write(`\x1b[2K  ${FRAMES[0]} ${text}\n`);
+    process.stderr.write(`\x1b[2K  ${SYM_SPIN(FRAMES[0])} ${text}\n`);
     start();
 
     return {
@@ -65,17 +73,17 @@ export function createSpinnerGroup() {
       succeed(newText: string) {
         entry.text = newText;
         entry.done = true;
-        entry.symbol = "✓";
+        entry.symbol = SYM_OK;
       },
       fail(newText: string) {
         entry.text = newText;
         entry.done = true;
-        entry.symbol = "✗";
+        entry.symbol = SYM_FAIL;
       },
       warn(newText: string) {
         entry.text = newText;
         entry.done = true;
-        entry.symbol = "⚠";
+        entry.symbol = SYM_WARN;
       },
     };
   }
