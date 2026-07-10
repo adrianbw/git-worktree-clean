@@ -9,6 +9,7 @@ An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs
 - Key bindings:
   - `↑` / `↓` — move cursor
   - `space` — toggle selection on the cursor row
+  - `c` — clean: select every merged/closed worktree and confirm immediately (dirty/locked ones still prompt for force removal)
   - `o` — open (cd into) the worktree under the cursor and exit
   - `enter` — confirm selection and remove the checked worktrees
   - `q` or `ctrl-c` — quit without doing anything
