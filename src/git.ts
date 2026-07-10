@@ -58,27 +58,43 @@ export function listWorktrees(): { mainPath: string; others: Worktree[] } {
       // If we can't check status, assume not dirty
     }
 
-    return { path, head, branch, isDirty, lockReason, prMerged: false };
+    return {
+      path,
+      head,
+      branch,
+      isDirty,
+      lockReason,
+      prMerged: false,
+      prClosed: false,
+    };
   });
 
   return { mainPath, others };
 }
 
+export type PrState = "MERGED" | "CLOSED" | "OPEN" | null;
+
 /**
- * Returns true if `branch` has a merged PR on the GitHub remote.
- * Returns false on any failure (gh not installed, no remote, no PR, etc.) —
- * a missing merged-PR signal should never block worktree cleanup.
+ * Returns the state of the most recent PR for `branch` on the GitHub remote,
+ * or null if there is none. Returns null on any failure (gh not installed, no
+ * remote, no PR, etc.) — a missing PR signal should never block worktree
+ * cleanup.
  */
-export async function isPrMerged(branch: string): Promise<boolean> {
+export async function getPrState(branch: string): Promise<PrState> {
   try {
     const { stdout } = await exec(
-      `gh pr list --head ${JSON.stringify(branch)} --state merged --json number --limit 1`,
+      `gh pr list --head ${JSON.stringify(branch)} --state all --json state --limit 1`,
       { timeout: 10000 },
     );
     const arr = JSON.parse(stdout);
-    return Array.isArray(arr) && arr.length > 0;
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const state = arr[0]?.state;
+    if (state === "MERGED" || state === "CLOSED" || state === "OPEN") {
+      return state;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 

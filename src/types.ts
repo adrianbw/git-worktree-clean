@@ -5,4 +5,5 @@ export interface Worktree {
   isDirty: boolean;
   lockReason: string | null;
   prMerged: boolean;
+  prClosed: boolean;
 }

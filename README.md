@@ -18,7 +18,9 @@ An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs
 Each row shows visual tags so you know what you're about to delete:
 - `⚠ dirty` — uncommitted changes in the working tree
 - `🔒 locked` — the worktree is locked (with the lock reason if one was given)
-- `✓ merged` — the worktree's branch has a merged PR on GitHub (detected via the `gh` CLI). PR-status checks run in parallel before the TUI opens, with a 10-second timeout per branch; if `gh` isn't installed or the lookup fails, the tag is simply omitted — it never blocks the cleanup flow.
+- `✓ merged` — the worktree's branch has a merged PR on GitHub (detected via the `gh` CLI)
+- `✕ closed` — the worktree's branch has a PR that was closed without merging
+- PR-status checks (both `merged` and `closed`) run in parallel before the TUI opens, with a 10-second timeout per branch; if `gh` isn't installed or the lookup fails, the tag is simply omitted — it never blocks the cleanup flow.
 - Detached-HEAD worktrees are shown as `(detached)`
 
 ### Safe removal
@@ -57,7 +59,7 @@ cd git-worktree-clean
 3. Appends a small shell function to `~/.zshrc` and `~/.bashrc` so the `o` (open) key can `cd` your parent shell. The block is idempotent — re-running `install.sh` won't add it twice.
 4. Warns if `~/.local/bin` isn't on your `PATH`.
 
-Requirements: `git`, Node.js (for `tsx`), and [pnpm](https://pnpm.io/installation) (or corepack). The `gh` CLI is optional and only used to detect merged PRs.
+Requirements: `git`, Node.js (for `tsx`), and [pnpm](https://pnpm.io/installation) (or corepack). The `gh` CLI is optional and only used to detect merged/closed PRs.
 
 ## Usage
 
@@ -115,7 +117,7 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 1. Checks you're inside a git repo (`git rev-parse --git-dir`)
 2. Runs `git worktree list --porcelain` and parses the porcelain output into structured worktree records — pulling out the path, HEAD, branch ref, and any `locked` reason. The first block (the main worktree) is skipped from the picker but its path is kept for `chdir`-ing into safely.
 3. For each worktree, runs `git -C <path> status --porcelain` to detect uncommitted changes
-4. In parallel, queries `gh pr list --head <branch> --state merged` for each branch to flag merged PRs (10s timeout, soft-fails)
+4. In parallel, queries `gh pr list --head <branch> --state all` for each branch and reads the most recent PR's state to flag `merged` and `closed` PRs (10s timeout, soft-fails)
 5. Renders the TUI; user toggles selections, opens a worktree, or quits
 6. For each selected dirty/locked worktree, prompts `y/n` to confirm force removal
 7. Removes selected worktrees in parallel (`git worktree remove`, with `--force` for dirty and `--force --force` for locked), deletes their branches (`git branch -D`), and shows progress with animated spinners
@@ -127,7 +129,7 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 - `bin/git-worktree-clean` — bash launcher (resolves symlinks, execs `tsx`)
 - `install.sh` — installs deps, symlinks the binary, adds the shell function
 - `src/main.ts` — orchestrates the flow
-- `src/git.ts` — git command wrappers (list, status, PR-merged check, remove, branch delete, prune)
+- `src/git.ts` — git command wrappers (list, status, PR-state check, remove, branch delete, prune)
 - `src/ui.ts` — the selection TUI and the dirty/locked confirmation prompt
 - `src/spinner.ts` — the multi-line animated spinner group used during parallel removal
 - `src/types.ts` — the `Worktree` record shape
@@ -137,4 +139,4 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 - Git
 - Node.js (for `tsx`)
 - pnpm (or corepack) — install-time only
-- `gh` CLI (optional, only used to detect merged PRs)
+- `gh` CLI (optional, only used to detect merged/closed PRs)
