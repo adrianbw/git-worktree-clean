@@ -19,7 +19,7 @@ const yellow = (s: string) => c("33", s);
 const red = (s: string) => c("31", s);
 
 const HEADER = dim(
-  "Select worktrees (↑/↓ move, space toggle, o open, enter confirm, q quit):",
+  "Select worktrees (↑/↓ move, space toggle, c clean merged/closed, o open, enter confirm, q quit):",
 );
 
 function formatRow(wt: Worktree, isCursor: boolean, isSelected: boolean): string {
@@ -95,6 +95,16 @@ export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
       if (key === "o") {
         cleanup();
         resolve({ type: "open", worktree: worktrees[cursor] });
+        return;
+      }
+      if (key === "c") {
+        // Select every worktree whose PR is merged or closed and confirm
+        // immediately. Dirty/locked ones among them still get a per-worktree
+        // force-removal prompt downstream, so this stays safe.
+        const targets = worktrees.filter((wt) => wt.prMerged || wt.prClosed);
+        if (targets.length === 0) return;
+        cleanup();
+        resolve({ type: "select", worktrees: targets });
         return;
       }
       if (key === "\r" || key === "\n") {
