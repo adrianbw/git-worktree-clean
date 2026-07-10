@@ -27,6 +27,7 @@ function formatRow(wt: Worktree, isCursor: boolean, isSelected: boolean): string
   if (wt.isDirty) tags.push(yellow("⚠ dirty"));
   if (wt.lockReason !== null) tags.push(red("🔒 locked"));
   if (wt.prMerged) tags.push(green("✓ merged"));
+  if (wt.prClosed) tags.push(red("✕ closed"));
   const suffix = tags.length ? ` ${tags.join(" ")}` : "";
 
   const branchText = wt.branch ?? dim("(detached)");

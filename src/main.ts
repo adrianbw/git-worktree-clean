@@ -5,7 +5,7 @@ import {
   removeWorktree,
   deleteBranch,
   pruneWorktrees,
-  isPrMerged,
+  getPrState,
 } from "./git.js";
 import { runTui, confirmForceRemoval } from "./ui.js";
 import { createSpinnerGroup } from "./spinner.js";
@@ -33,7 +33,10 @@ async function main() {
   process.stderr.write("Checking PR status...\n");
   await Promise.allSettled(
     worktrees.map(async (wt) => {
-      if (wt.branch) wt.prMerged = await isPrMerged(wt.branch);
+      if (!wt.branch) return;
+      const state = await getPrState(wt.branch);
+      wt.prMerged = state === "MERGED";
+      wt.prClosed = state === "CLOSED";
     }),
   );
   // Erase the "Checking PR status..." line so the TUI starts at the top.
