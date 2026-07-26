@@ -6,6 +6,7 @@ import {
   deleteBranch,
   pruneWorktrees,
   getPrState,
+  isDirty,
 } from "./git.js";
 import { runTui, confirmForceRemoval } from "./ui.js";
 import { createSpinnerGroup } from "./spinner.js";
@@ -30,19 +31,34 @@ async function main() {
     process.exit(0);
   }
 
-  process.stderr.write("Checking PR status...\n");
-  await Promise.allSettled(
+  // A detached worktree has no branch to look up, so it is never pending.
+  for (const wt of worktrees) {
+    if (!wt.branch) wt.prState = null;
+  }
+
+  // Paint the list right away, then fill in the slow per-worktree signals
+  // (`git status` walks the whole tree; `gh` hits the network) concurrently.
+  // Rows gain their badges as each check lands.
+  const tui = runTui(worktrees);
+
+  const dirtyChecked = Promise.all(
+    worktrees.map(async (wt) => {
+      wt.isDirty = await isDirty(wt.path);
+      tui.refresh();
+    }),
+  ).catch(() => {});
+
+  // Nothing awaits the PR lookups: the only action that depends on them ('c')
+  // is gated inside the TUI, which reads the worktrees live.
+  void Promise.all(
     worktrees.map(async (wt) => {
       if (!wt.branch) return;
-      const state = await getPrState(wt.branch);
-      wt.prMerged = state === "MERGED";
-      wt.prClosed = state === "CLOSED";
+      wt.prState = await getPrState(wt.branch);
+      tui.refresh();
     }),
-  );
-  // Erase the "Checking PR status..." line so the TUI starts at the top.
-  process.stderr.write("\x1b[1A\x1b[2K");
+  ).catch(() => {});
 
-  const result = await runTui(worktrees);
+  const result = await tui.result;
 
   if (result.type === "quit") {
     process.exit(0);
@@ -68,6 +84,10 @@ async function main() {
     process.exit(0);
   }
 
+  // The force-removal prompts below depend on dirty state, so wait for the
+  // background checks here — by now they have usually long since finished.
+  await dirtyChecked;
+
   // Confirm dirty / locked worktrees sequentially
   const toRemove: Array<{
     worktree: Worktree;
@@ -84,7 +104,7 @@ async function main() {
         continue;
       }
     }
-    toRemove.push({ worktree: wt, force: wt.isDirty, locked });
+    toRemove.push({ worktree: wt, force: wt.isDirty === true, locked });
   }
 
   if (toRemove.length === 0) {
