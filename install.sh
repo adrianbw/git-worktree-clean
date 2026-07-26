@@ -20,6 +20,14 @@ else
   exit 1
 fi
 
+# Compile to plain JS so startup skips tsx's transpile step
+echo "→ Building..."
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm build
+else
+  corepack pnpm build
+fi
+
 # Make wrapper executable
 chmod +x "$WRAPPER"
 

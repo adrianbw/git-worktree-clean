@@ -26,8 +26,8 @@ function formatRow(wt: Worktree, isCursor: boolean, isSelected: boolean): string
   const tags: string[] = [];
   if (wt.isDirty) tags.push(yellow("⚠ dirty"));
   if (wt.lockReason !== null) tags.push(red("🔒 locked"));
-  if (wt.prMerged) tags.push(green("✓ merged"));
-  if (wt.prClosed) tags.push(red("✕ closed"));
+  if (wt.prState === "MERGED") tags.push(green("✓ merged"));
+  if (wt.prState === "CLOSED") tags.push(red("✕ closed"));
   const suffix = tags.length ? ` ${tags.join(" ")}` : "";
 
   const branchText = wt.branch ?? dim("(detached)");
@@ -38,10 +38,34 @@ function formatRow(wt: Worktree, isCursor: boolean, isSelected: boolean): string
   return `${cursor} ${box} ${label}${suffix}`;
 }
 
-export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
+export interface Tui {
+  /** Resolves once the user picks an action. */
+  result: Promise<TuiResult>;
+  /** Repaint — call after mutating worktree state in the background. */
+  refresh: () => void;
+}
+
+/**
+ * Paints the worktree list and starts handling input immediately. Rows are read
+ * live from `worktrees`, so a caller resolving `isDirty` / `prState` in the
+ * background just mutates them and calls `refresh()`.
+ */
+export function runTui(worktrees: Worktree[]): Tui {
   let cursor = 0;
   const selected = new Set<number>();
   let drawnLines = 0;
+  let notice: string | null = null;
+  let done = false;
+
+  const footer = (): string | null => {
+    if (notice !== null) return yellow(notice);
+    const pending: string[] = [];
+    const dirty = worktrees.filter((wt) => wt.isDirty === null).length;
+    const prs = worktrees.filter((wt) => wt.prState === "pending").length;
+    if (dirty > 0) pending.push(`status ${dirty}`);
+    if (prs > 0) pending.push(`PRs ${prs}`);
+    return pending.length ? dim(`  ⋯ checking ${pending.join(", ")}`) : null;
+  };
 
   const draw = () => {
     const out = process.stderr;
@@ -50,19 +74,28 @@ export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
     for (let i = 0; i < worktrees.length; i++) {
       rows.push(formatRow(worktrees[i], i === cursor, selected.has(i)));
     }
+    const f = footer();
+    if (f !== null) rows.push(f);
     for (const r of rows) out.write(`\x1b[2K${r}\n`);
+    // Clear any lines the previous, taller frame left behind (the footer
+    // disappears once every background check has landed).
+    for (let i = rows.length; i < drawnLines; i++) out.write("\x1b[2K\n");
+    if (rows.length < drawnLines) {
+      out.write(`\x1b[${drawnLines - rows.length}A`);
+    }
     drawnLines = rows.length;
   };
 
   draw();
 
-  return new Promise((resolve) => {
+  const result = new Promise<TuiResult>((resolve) => {
     const stdin = process.stdin;
     const wasRaw = stdin.isRaw;
     stdin.setRawMode(true);
     stdin.resume();
 
     const cleanup = () => {
+      done = true;
       stdin.removeListener("data", onData);
       stdin.setRawMode(wasRaw ?? false);
       stdin.pause();
@@ -70,6 +103,9 @@ export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
 
     const onData = (chunk: Buffer) => {
       const key = chunk.toString();
+
+      // Any keypress dismisses a transient notice.
+      if (notice !== null) notice = null;
 
       if (key === "\x03" || key === "q") {
         cleanup();
@@ -101,8 +137,22 @@ export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
         // Select every worktree whose PR is merged or closed and confirm
         // immediately. Dirty/locked ones among them still get a per-worktree
         // force-removal prompt downstream, so this stays safe.
-        const targets = worktrees.filter((wt) => wt.prMerged || wt.prClosed);
-        if (targets.length === 0) return;
+        //
+        // Refuse while PR lookups are outstanding — acting on a partial set
+        // would silently skip worktrees that are in fact merged.
+        if (worktrees.some((wt) => wt.prState === "pending")) {
+          notice = "  Still checking PR status — try again in a moment.";
+          draw();
+          return;
+        }
+        const targets = worktrees.filter(
+          (wt) => wt.prState === "MERGED" || wt.prState === "CLOSED",
+        );
+        if (targets.length === 0) {
+          notice = "  No merged or closed PRs to clean up.";
+          draw();
+          return;
+        }
         cleanup();
         resolve({ type: "select", worktrees: targets });
         return;
@@ -115,10 +165,22 @@ export async function runTui(worktrees: Worktree[]): Promise<TuiResult> {
         });
         return;
       }
+
+      // Unhandled key: repaint only if we just cleared a notice.
+      draw();
     };
 
     stdin.on("data", onData);
   });
+
+  return {
+    result,
+    // Ignore late updates once the TUI has torn down, otherwise a resolving
+    // background check would repaint over whatever is on screen next.
+    refresh: () => {
+      if (!done) draw();
+    },
+  };
 }
 
 export function confirmForceRemoval(wt: Worktree): Promise<boolean> {

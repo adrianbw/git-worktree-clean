@@ -1,6 +1,6 @@
-import { execSync, exec as execCb } from "node:child_process";
+import { execSync, exec as execCb, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import type { Worktree } from "./types.js";
+import type { PrState, Worktree } from "./types.js";
 
 const exec = promisify(execCb);
 
@@ -28,7 +28,7 @@ export function listWorktrees(): { mainPath: string; others: Worktree[] } {
 
   const worktreeBlocks = blocks.slice(1);
 
-  const others = worktreeBlocks.map((block) => {
+  const others = worktreeBlocks.map((block): Worktree => {
     const lines = block.split("\n");
     let path = "";
     let head = "";
@@ -48,31 +48,57 @@ export function listWorktrees(): { mainPath: string; others: Worktree[] } {
       // "detached" line → branch stays null
     }
 
-    let isDirty = false;
-    try {
-      const status = execSync(`git -C ${JSON.stringify(path)} status --porcelain`, {
-        encoding: "utf-8",
-      });
-      isDirty = status.trim().length > 0;
-    } catch {
-      // If we can't check status, assume not dirty
-    }
-
     return {
       path,
       head,
       branch,
-      isDirty,
+      // Resolved asynchronously by isDirty() / getPrState() so the TUI can
+      // paint before the slow per-worktree checks finish. null = not yet known.
+      isDirty: null,
       lockReason,
-      prMerged: false,
-      prClosed: false,
+      prState: "pending",
     };
   });
 
   return { mainPath, others };
 }
 
-export type PrState = "MERGED" | "CLOSED" | "OPEN" | null;
+/**
+ * Whether `path` has uncommitted changes (including untracked files).
+ *
+ * Uses spawn rather than exec so we can bail the moment git emits its first
+ * byte of output — for a dirty worktree that avoids walking the rest of the
+ * tree, and it means output size is irrelevant (an exec buffer overflow on a
+ * very dirty worktree would otherwise look like "clean").
+ */
+export function isDirty(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (dirty: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(dirty);
+    };
+
+    const child = spawn("git", ["-C", path, "status", "--porcelain"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      // Any output at all means the worktree is dirty; stop git early.
+      if (chunk.length > 0) {
+        finish(true);
+        child.kill();
+      }
+    });
+
+    // No output by the time git exits → clean. If git failed to run at all we
+    // also land here; treating that as "not dirty" matches the prior behaviour
+    // (a missing dirty signal must never block cleanup).
+    child.on("close", () => finish(false));
+    child.on("error", () => finish(false));
+  });
+}
 
 /**
  * Returns the state of the most recent PR for `branch` on the GitHub remote,

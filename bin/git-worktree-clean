@@ -8,4 +8,13 @@ while [ -L "$SOURCE" ]; do
   [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+# Prefer the compiled build — it skips tsx's on-the-fly transpile, which is
+# most of the startup cost. Fall back to tsx when dist is absent or older than
+# any source file, so editing src/ still works without a rebuild.
+BUILT="$DIR/dist/main.js"
+if [ -f "$BUILT" ] && [ -z "$(find "$DIR/src" -name '*.ts' -newer "$BUILT" -print -quit)" ]; then
+  exec node "$BUILT" "$@"
+fi
+
 exec "$DIR/node_modules/.bin/tsx" "$DIR/src/main.ts" "$@"
