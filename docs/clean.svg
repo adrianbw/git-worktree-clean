@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="490" height="244" viewBox="0 0 490 244" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+  <rect x="0" y="0" width="490" height="244" rx="8" fill="#1e222d"/>
+  <rect x="0" y="0" width="490" height="34" fill="#181b24"/>
+  <circle cx="20" cy="17" r="5.5" fill="#e06c75"/>
+  <circle cx="38" cy="17" r="5.5" fill="#e5c07b"/>
+  <circle cx="56" cy="17" r="5.5" fill="#98c379"/>
+  <text x="245" y="22" text-anchor="middle" font-size="12.5" fill="#8b93a7">git-worktree-clean — c (clean merged/closed)</text>
+  <text x="18" y="60" xml:space="preserve"><tspan fill="#d7dae0">Removing 4 worktrees...</tspan></text>
+  <text x="18" y="80" xml:space="preserve"></text>
+  <text x="18" y="100" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#98c379">✓</tspan><tspan fill="#d7dae0"> feature/api-pagination — worktree + branch removed</tspan></text>
+  <text x="18" y="120" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#98c379">✓</tspan><tspan fill="#d7dae0"> chore/bump-deps — worktree + branch removed</tspan></text>
+  <text x="18" y="140" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#98c379">✓</tspan><tspan fill="#d7dae0"> feature/dark-mode — worktree + branch removed</tspan></text>
+  <text x="18" y="160" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#98c379">✓</tspan><tspan fill="#d7dae0"> fix/login-redirect — worktree + branch removed</tspan></text>
+  <text x="18" y="180" xml:space="preserve"></text>
+  <text x="18" y="200" xml:space="preserve"><tspan fill="#d7dae0">Pruning stale worktree references...</tspan></text>
+  <text x="18" y="220" xml:space="preserve"><tspan fill="#d7dae0">Done.</tspan></text>
+</svg>
