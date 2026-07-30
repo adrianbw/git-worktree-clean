@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# Regenerates the SVG screenshots in docs/ from the real binary.
+#
+# Builds a throwaway git repo with worktrees covering every badge the TUI can
+# show, runs the app under a pty with scripted keystrokes, and renders the
+# captured ANSI to SVG. Every screenshot is genuine output: real git, real
+# removals, real `git status`. Only `gh` is stubbed, since the demo repo has no
+# GitHub remote to have PRs on.
+#
+# Usage: docs/screenshots/capture.sh [outdir]   (default: docs/)
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
+OUTDIR="${1:-$REPO/docs}"
+
+WORK="$(mktemp -d -t gwtc-shots)"
+trap 'rm -rf "$WORK"' EXIT
+
+# `git worktree list` reports worktrees ordered by directory name, so these
+# names determine row order in every screenshot.
+DEMO_BRANCHES=(
+  feature/api-pagination
+  feature/dark-mode
+  fix/login-redirect
+  feature/billing-v2
+  spike/perf-profiling
+  chore/bump-deps
+)
+
+build_demo_repo() {
+  rm -rf "$WORK/repo" "$WORK/wt"
+  git init -q -b main "$WORK/repo"
+  git -C "$WORK/repo" config user.email screenshots@example.com
+  git -C "$WORK/repo" config user.name Screenshots
+  git -C "$WORK/repo" config commit.gpgsign false
+  echo "# acme-app" > "$WORK/repo/README.md"
+  git -C "$WORK/repo" add -A
+  git -C "$WORK/repo" commit -qm "init"
+
+  for b in "${DEMO_BRANCHES[@]}"; do
+    git -C "$WORK/repo" worktree add -q -b "$b" "$WORK/wt/$(basename "$b")" main
+  done
+  git -C "$WORK/repo" worktree add -q --detach "$WORK/wt/detached" main
+
+  # One dirty worktree and one locked worktree, so `⚠ dirty` and `🔒 locked`
+  # both appear and the force-removal prompts have something to ask about.
+  echo "wip" > "$WORK/wt/billing-v2/scratch.txt"
+  git -C "$WORK/repo" worktree lock --reason "long-running benchmark" "$WORK/wt/perf-profiling"
+}
+
+# Runs the app under a pty, feeding it keystrokes from stdin. A pty is required:
+# the TUI needs raw mode, and color switches off when stderr is not a TTY.
+run_under_pty() {
+  local outfile="$1"
+  if script -q /dev/null true >/dev/null 2>&1; then
+    script -q "$outfile" "$REPO/bin/git-worktree-clean"      # BSD / macOS
+  else
+    script -q -e -c "$REPO/bin/git-worktree-clean" "$outfile" # GNU / Linux
+  fi
+}
+
+capture() {
+  local name="$1" driver="$2"
+  build_demo_repo
+  ( cd "$WORK/repo" && printf '%s' "$driver" | bash | run_under_pty "$WORK/$name.ansi" ) >/dev/null 2>&1 || true
+}
+
+export PATH="$HERE/gh-stub:$PATH"
+export COLUMNS=100 LINES=30
+chmod +x "$HERE/gh-stub/gh"
+
+render() {
+  node "$HERE/render.mjs" "$@"
+}
+
+echo "→ tui.svg + checking.svg (browse and select)"
+capture browse '
+sleep 2.2
+printf "\x1b[B"; sleep 0.15
+printf "\x1b[B"; sleep 0.15   # -> chore/bump-deps
+printf " ";      sleep 0.15   # select it
+printf "\x1b[B"; sleep 0.15   # -> feature/dark-mode
+printf " ";      sleep 0.15   # select it
+printf "\x1b[B"; sleep 0.15   # -> (detached)
+printf "\x1b[B"; sleep 0.4    # -> fix/login-redirect
+printf "q";      sleep 0.4
+'
+render "$WORK/browse.ansi" "$OUTDIR/tui.svg" --title "git-worktree-clean"
+# Frame 3 lands while the per-worktree checks are still resolving.
+render "$WORK/browse.ansi" "$OUTDIR/checking.svg" --frame 3 --title "git-worktree-clean"
+
+echo "→ gated.svg (c pressed before the PR lookups finish)"
+GH_STUB_DELAY=6 capture gated '
+sleep 0.35
+printf "c"; sleep 0.5
+printf "q"; sleep 0.3
+'
+render "$WORK/gated.ansi" "$OUTDIR/gated.svg" --title "git-worktree-clean"
+
+echo "→ clean.svg (c sweeps every merged/closed worktree)"
+capture clean '
+sleep 2.2
+printf "c"
+sleep 3.0
+'
+render "$WORK/clean.ansi" "$OUTDIR/clean.svg" --trim-top 9 \
+  --title "git-worktree-clean — c (clean merged/closed)"
+
+echo "→ force.svg (dirty and locked force-removal prompts)"
+# Rows, in list order: api-pagination, billing-v2, bump-deps, dark-mode,
+# detached, login-redirect, perf-profiling. This walks to the dirty one and the
+# locked one, the two that trigger a force-removal prompt.
+capture force '
+sleep 2.2
+printf "\x1b[B"; sleep 0.15   # -> feature/billing-v2 (dirty)
+printf " ";      sleep 0.2    # select it
+for _ in 1 2 3 4 5; do printf "\x1b[B"; sleep 0.15; done
+printf " ";      sleep 0.3    # select spike/perf-profiling (locked)
+printf "\r";     sleep 1.0    # confirm
+printf "y";      sleep 0.8
+printf "y";      sleep 3.0
+'
+# Crop the eight list rows, leaving the prompts and the removal output.
+render "$WORK/force.ansi" "$OUTDIR/force.svg" --trim-top 8 \
+  --title "git-worktree-clean — force removal"
+
+# The demo repo's worktrees live under $WORK, but its branches were only ever
+# local to it, so nothing outside $WORK needs cleaning up.
+echo "✓ Wrote 5 SVGs to $OUTDIR"

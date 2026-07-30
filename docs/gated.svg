@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="843" height="244" viewBox="0 0 843 244" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="14">
+  <rect x="0" y="0" width="843" height="244" rx="8" fill="#1e222d"/>
+  <rect x="0" y="0" width="843" height="34" fill="#181b24"/>
+  <circle cx="20" cy="17" r="5.5" fill="#e06c75"/>
+  <circle cx="38" cy="17" r="5.5" fill="#e5c07b"/>
+  <circle cx="56" cy="17" r="5.5" fill="#98c379"/>
+  <text x="421.5" y="22" text-anchor="middle" font-size="12.5" fill="#8b93a7">git-worktree-clean</text>
+  <text x="18" y="60" xml:space="preserve"><tspan fill="#d7dae0" opacity="0.62">Select worktrees (↑/↓ move, space toggle, c clean merged/closed, o open, enter confirm, q quit):</tspan></text>
+  <text x="18" y="80" xml:space="preserve"><tspan fill="#67e0f5">❯</tspan><tspan fill="#d7dae0"> </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> </tspan><tspan fill="#d7dae0" font-weight="700">feature/api-pagination</tspan></text>
+  <text x="18" y="100" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> feature/billing-v2 </tspan><tspan fill="#e5c07b">⚠ dirty</tspan></text>
+  <text x="18" y="120" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> chore/bump-deps</tspan></text>
+  <text x="18" y="140" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> feature/dark-mode</tspan></text>
+  <text x="18" y="160" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> </tspan><tspan fill="#d7dae0" opacity="0.62">(detached)</tspan></text>
+  <text x="18" y="180" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> fix/login-redirect</tspan></text>
+  <text x="18" y="200" xml:space="preserve"><tspan fill="#d7dae0">  </tspan><tspan fill="#d7dae0" opacity="0.62">[ ]</tspan><tspan fill="#d7dae0"> spike/perf-profiling </tspan><tspan fill="#e06c75">🔒 locked</tspan></text>
+  <text x="18" y="220" xml:space="preserve"><tspan fill="#e5c07b">  Still checking PR status — try again in a moment.</tspan></text>
+</svg>

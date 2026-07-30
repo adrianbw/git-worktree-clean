@@ -2,18 +2,24 @@
 
 An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs/git-worktree). Lists your worktrees, lets you select which ones to remove, and deletes the associated branches — all with a custom terminal UI. Also doubles as a worktree picker: hit `o` on any row to `cd` your shell straight into that worktree.
 
+![The selection TUI, showing merged, dirty, closed and locked worktrees](docs/tui.svg)
+
 ## Features
 
 ### Interactive selection TUI
 - Custom-built keyboard-driven TUI (no external prompt library)
 - Key bindings:
-  - `↑` / `↓` — move cursor
+  - `↑` / `↓` — move cursor; wraps around at both ends of the list
   - `space` — toggle selection on the cursor row
   - `c` — clean: select every merged/closed worktree and confirm immediately (dirty/locked ones still prompt for force removal)
   - `o` — open (cd into) the worktree under the cursor and exit
   - `enter` — confirm selection and remove the checked worktrees
   - `q` or `ctrl-c` — quit without doing anything
+- The cursor row is marked with a cyan `❯` and its branch name is bold; selected rows show a green `[x]`
 - Main worktree is always hidden from the list — you can never accidentally select it
+- Any key that isn't bound does nothing (beyond dismissing a notice, below)
+
+Worktrees appear in the order `git worktree list` reports them (git's own bookkeeping order, which in practice sorts by the worktree's directory name rather than by creation time).
 
 ### Worktree status tags
 Each row shows visual tags so you know what you're about to delete:
@@ -23,22 +29,42 @@ Each row shows visual tags so you know what you're about to delete:
 - `✕ closed` — the worktree's branch has a PR that was closed without merging
 - Detached-HEAD worktrees are shown as `(detached)`
 
+A branch with an **open** PR, or with no PR at all, gets no tag — only the two states that mean "this branch is finished" are called out, and only those two are what `c` acts on. Detached worktrees have no branch, so they're never looked up.
+
 The `dirty`, `merged`, and `closed` tags are all resolved **after** the list is on screen (see [Startup](#startup)), so they pop in a moment after the TUI opens. A `⋯ checking …` footer shows what's still outstanding and disappears once everything has landed. PR lookups use a 10-second timeout per branch; if `gh` isn't installed or the lookup fails, the tag is simply omitted — it never blocks the cleanup flow.
 
+![The list on screen with a footer reading "checking status 5, PRs 6"](docs/checking.svg)
+
 Two places wait for this background work, so a fast keypress can never act on incomplete data:
-- `c` (clean merged/closed) refuses to run while any PR lookup is outstanding — acting on a partial set would silently skip worktrees that are in fact merged.
+- `c` (clean merged/closed) refuses to run while any PR lookup is outstanding — acting on a partial set would silently skip worktrees that are in fact merged. It says so in the footer and leaves your selection untouched.
 - `enter` waits for the `git status` checks before prompting, so a dirty worktree always gets its force-removal confirmation.
+
+![Pressing c too early, with the footer reading "Still checking PR status — try again in a moment."](docs/gated.svg)
+
+The footer doubles as a place for transient notices, shown in yellow and cleared by the next keypress:
+- `Still checking PR status — try again in a moment.` — `c` pressed before the PR lookups finished
+- `No merged or closed PRs to clean up.` — `c` pressed when nothing qualifies
 
 ### Safe removal
 - Clean worktrees are removed in one go after the user confirms with enter
-- Dirty and/or locked worktrees prompt a per-worktree `y/n` confirmation before being force-removed (`--force` once for dirty, twice for locked, as `git worktree remove` requires)
+- Dirty and/or locked worktrees prompt a per-worktree `y/n` confirmation before being force-removed (`--force` once for dirty, twice for locked, as `git worktree remove` requires). The prompt names the reason — `has uncommitted changes`, `is locked (<reason>)`, or both joined with "and".
+- Answering `n` prints `Skipping <branch>` and moves on to the next prompt; `ctrl-c` aborts the whole run. Any other key is ignored, so a stray keystroke can't be read as a yes.
 - After a worktree is removed, its branch is deleted with `git branch -D`. If branch deletion fails (e.g., it's checked out elsewhere), the worktree is still reported as removed and the branch failure is surfaced as a warning rather than an error.
+- Detached worktrees have no branch, so nothing is deleted after the worktree itself
 - Final `git worktree prune` cleans up any stale references
+
+![Two y/n force-removal prompts, then two successful removals](docs/force.svg)
+
+Nothing-to-do cases exit quietly with status 0: `No additional worktrees found.` (the repo has only a main worktree), `Nothing selected.` (enter pressed with no rows checked), and `Nothing to remove.` (every prompt was declined).
 
 ### Parallel removal with live progress
 - Selected worktrees are removed in parallel
 - Each removal gets its own animated spinner line (braille frames, updated in place via ANSI cursor moves)
+- While a removal is in flight the line shows `<branch> — deleting branch...` once the worktree itself is gone
 - Spinners transition to `✓` (success), `✗` (failure), or `⚠` (partial — worktree gone but branch couldn't be deleted)
+- One worktree failing doesn't abort the others; the run still finishes with a prune
+
+![Four worktrees removed in parallel, each with a green check](docs/clean.svg)
 
 ### Worktree picker (`o` key)
 Press `o` on any row to `cd` your parent shell into that worktree's path and exit. This is implemented by:
@@ -50,6 +76,18 @@ If the shell function isn't installed (e.g., you ran the binary directly), press
 
 ### Self-protection against cwd-pulled-from-under-you
 Before doing anything, the tool `chdir`s into the main worktree. That way, if you happen to be sitting inside a worktree you're about to remove, the removal doesn't break subsequent git commands (or leave your shell stranded). If your original shell `cwd` was inside a removed worktree, the tool prints a final reminder telling you to `cd` into the main worktree.
+
+### Color and output streams
+Tags and status symbols are colored with ANSI escapes: yellow for `dirty` and warnings, red for `locked`, `closed` and failures, green for `merged`, checkmarks and `[x]`, cyan for the cursor and spinner frames, and dim grey for the header, `[ ]` and `(detached)`.
+
+Color turns itself off when stderr isn't a TTY (so piping or redirecting gives you clean text) and when [`NO_COLOR`](https://no-color.org/) is set to anything.
+
+The TUI and the removal spinners are drawn on **stderr**. Stdout carries the `y/n` force-removal prompts and the plain progress lines (`Removing 3 worktrees...`, `Skipping ...`, `Pruning stale worktree references...`, `Done.`); failures go to stderr.
+
+### Exit codes
+- `0` — cleanup finished, or you quit with `q`/`ctrl-c`, or there was nothing to do
+- `1` — not inside a git repository, `o` was pressed without the shell function installed, or an unexpected error was thrown
+- `130` — `ctrl-c` at a `y/n` force-removal prompt
 
 ## Install
 
@@ -76,7 +114,9 @@ From inside any git repository:
 git-worktree-clean
 ```
 
-You'll see a checkbox list of every worktree except the main one. Select the ones you want removed and press enter — or press `o` to jump into the worktree under the cursor.
+You'll see a checkbox list of every worktree except the main one. Select the ones you want removed and press enter, press `c` to sweep every merged/closed worktree at once, or press `o` to jump into the worktree under the cursor.
+
+The tool takes no arguments or flags; the only environment variables it reads are `GIT_WORKTREE_CLEAN_CD_FILE` (set for you by the shell function) and `NO_COLOR`.
 
 ## How the launcher script works
 
@@ -133,11 +173,11 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 3. **Renders the TUI immediately**, with `isDirty` and `prState` still unresolved
 4. In the background, and all concurrently:
    - `git -C <path> status --porcelain` per worktree to detect uncommitted changes
-   - `gh pr list --head <branch> --state all` per branch, reading the most recent PR's state to flag `merged` and `closed` (10s timeout, soft-fails)
+   - `gh pr list --head <branch> --state all --json state --limit 1` per branch, reading the most recent PR's state to flag `merged` and `closed` (10s timeout, soft-fails)
 
-   Each result mutates its worktree record and repaints the affected row.
-5. User toggles selections, opens a worktree, or quits
-6. Waits for the `status` checks, then prompts `y/n` per selected dirty/locked worktree to confirm force removal
+   Each result mutates its worktree record and repaints the affected row. Detached worktrees skip the `gh` call entirely.
+5. User toggles selections and confirms, sweeps every merged/closed worktree with `c`, opens a worktree, or quits
+6. Waits for the `status` checks, then prompts `y/n` per selected dirty/locked worktree to confirm force removal — including for worktrees that `c` selected
 7. Removes selected worktrees in parallel (`git worktree remove`, with `--force` for dirty and `--force --force` for locked), deletes their branches (`git branch -D`), and shows progress with animated spinners
 8. Runs `git worktree prune` to clean up stale references
 9. Warns if the shell's original `cwd` was inside a removed worktree
@@ -161,15 +201,20 @@ On a monorepo with 9 worktrees, time-to-first-frame went from **~3.7s to ~140ms*
 - `src/ui.ts` — the selection TUI and the dirty/locked confirmation prompt
 - `src/spinner.ts` — the multi-line animated spinner group used during parallel removal
 - `src/types.ts` — the `Worktree` record shape
+- `docs/` — the SVG screenshots used in this README
+- `docs/screenshots/` — the harness that regenerates them ([details](docs/screenshots/README.md))
 
 ## Development
 
 ```sh
-pnpm build      # compile src/ -> dist/ (what the launcher prefers)
-pnpm typecheck  # tsc --noEmit
+pnpm build        # compile src/ -> dist/ (what the launcher prefers)
+pnpm typecheck    # tsc --noEmit
+pnpm screenshots  # regenerate the SVGs in docs/ from the real binary
 ```
 
 You don't have to rebuild while iterating — the launcher notices when `src/` is newer than `dist/` and falls back to `tsx`. Run `pnpm build` when you're done to get the faster startup back.
+
+If you change how the TUI looks, run `pnpm screenshots` to refresh the images above. It drives the real binary against a throwaway repo under a pty, so the screenshots can't drift from actual behaviour — see [docs/screenshots/README.md](docs/screenshots/README.md).
 
 ## Requirements
 

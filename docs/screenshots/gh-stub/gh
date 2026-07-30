@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Stand-in for the `gh` CLI while capturing screenshots. The demo repo has no
+# GitHub remote, so PR states are derived from the demo branch names.
+#
+# GH_STUB_DELAY controls how long each lookup takes, which is what makes the
+# "still checking" states reachable in a capture.
+branch=""
+next_is_head=0
+for arg in "$@"; do
+  if [ "$next_is_head" = 1 ]; then branch="$arg"; next_is_head=0; fi
+  [ "$arg" = "--head" ] && next_is_head=1
+done
+
+sleep "${GH_STUB_DELAY:-0.4}"
+
+case "$branch" in
+  feature/api-pagination) echo '[{"state":"MERGED"}]' ;;
+  feature/dark-mode)      echo '[{"state":"MERGED"}]' ;;
+  chore/bump-deps)        echo '[{"state":"MERGED"}]' ;;
+  fix/login-redirect)     echo '[{"state":"CLOSED"}]' ;;
+  feature/billing-v2)     echo '[{"state":"OPEN"}]' ;;
+  *)                      echo '[]' ;;
+esac

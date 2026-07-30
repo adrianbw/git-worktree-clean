@@ -6,7 +6,8 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "screenshots": "bash docs/screenshots/capture.sh"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
