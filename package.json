@@ -6,7 +6,8 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "node --import tsx --test test/*.test.ts",
     "screenshots": "bash docs/screenshots/capture.sh"
   },
   "devDependencies": {
