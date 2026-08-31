@@ -234,16 +234,37 @@ On a monorepo with 9 worktrees, time-to-first-frame went from **~3.7s to ~140ms*
 - `src/types.ts` — the `Worktree` record shape
 - `docs/` — the SVG screenshots used in this README
 - `docs/screenshots/` — the harness that regenerates them ([details](docs/screenshots/README.md))
+- `test/` — the end-to-end suite, run by `pnpm test`
 
 ## Development
 
 ```sh
 pnpm build        # compile src/ -> dist/ (what the launcher prefers)
-pnpm typecheck    # tsc --noEmit
+pnpm test         # run the end-to-end suite (node:test)
+pnpm typecheck    # tsc --noEmit, over src/ and test/
 pnpm screenshots  # regenerate the SVGs in docs/ from the real binary
 ```
 
 You don't have to rebuild while iterating — the launcher notices when `src/` is newer than `dist/` and falls back to `tsx`. Run `pnpm build` when you're done to get the faster startup back.
+
+### Tests
+
+`pnpm test` drives the launcher end to end against the same throwaway repo the
+screenshots use (`docs/screenshots/demo-repo.sh`), with `gh` stubbed. Each test
+builds its own copy under `mktemp`, so no state is shared and each cleans up
+after itself. They assert on the report, the exit code, and what `git worktree list`
+and `git branch` say afterwards:
+
+- The sweep removes exactly the clean merged/closed worktrees and their branches, and leaves open-PR, no-PR and detached ones alone
+- A merged worktree that is dirty, or locked, is named in the skip block and survives
+- A second run reports nothing to remove
+- A blocked removal exits `1`, is counted in the report, and deletes no branch
+- Missing `gh` exits `1` and removes nothing
+- `--help`, an unknown argument, and a repo with only a main worktree
+- The report carries no ANSI escapes, and nothing is written to stderr, when stdout is a pipe
+
+The TUI itself is not unit-tested — it needs raw-mode stdin and a pty. The
+screenshot harness covers that path, and it fails loudly if a frame changes.
 
 If you change how the TUI looks, run `pnpm screenshots` to refresh the images above. It drives the real binary against a throwaway repo under a pty, so the screenshots can't drift from actual behaviour — see [docs/screenshots/README.md](docs/screenshots/README.md).
 
