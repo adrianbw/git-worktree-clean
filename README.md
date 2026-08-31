@@ -90,7 +90,7 @@ git-worktree-clean --auto
 - Ends with a one-line tally: `Done. Removed 3, skipped 1, failed 0.`
 - Requires the `gh` CLI. The TUI degrades quietly without it (the merged/closed tags simply never appear), but `--auto` acts on exactly those tags, so it says what is missing and exits `1` rather than reporting an empty sweep
 
-`-h` / `--help` prints the usage; any other argument is an error.
+`-a` / `--auto` and `-h` / `--help` are the accepted spellings; each is matched whole, so short flags do not bundle and `-ah` is an error. Any other argument is an error.
 
 ### Self-protection against cwd-pulled-from-under-you
 Before doing anything, the tool `chdir`s into the main worktree. That way, if you happen to be sitting inside a worktree you're about to remove, the removal doesn't break subsequent git commands (or leave your shell stranded). If your original shell `cwd` was inside a removed worktree, the tool prints a final reminder telling you to `cd` into the main worktree.
