@@ -1,18 +1,64 @@
 import { writeFileSync } from "node:fs";
+import { runAuto } from "./auto.js";
 import {
   isInsideGitRepo,
   listWorktrees,
-  removeWorktree,
-  deleteBranch,
   pruneWorktrees,
   getPrState,
   isDirty,
 } from "./git.js";
+import { removeAll } from "./remove.js";
+import type { RemovalTarget } from "./remove.js";
 import { runTui, confirmForceRemoval } from "./ui.js";
 import { createSpinnerGroup } from "./spinner.js";
 import type { Worktree } from "./types.js";
 
+const USAGE = `Usage: git-worktree-clean [options]
+
+Options:
+  --auto      Remove every merged/closed worktree without opening the TUI and
+              report the result. Dirty and locked worktrees are listed, not
+              removed. Requires the gh CLI.
+  -h, --help  Show this help.`;
+
+interface Options {
+  auto: boolean;
+}
+
+function parseArgs(argv: string[]): Options {
+  const options: Options = { auto: false };
+
+  for (const arg of argv) {
+    if (arg === "--auto") {
+      options.auto = true;
+    } else if (arg === "-h" || arg === "--help") {
+      console.log(USAGE);
+      process.exit(0);
+    } else {
+      console.error(`Unknown argument: ${arg}\n\n${USAGE}`);
+      process.exit(1);
+    }
+  }
+
+  return options;
+}
+
+function warnIfCwdRemoved(
+  removedPaths: Set<string>,
+  originalCwd: string,
+  mainPath: string,
+) {
+  const cwdRemoved = [...removedPaths].some(
+    (p) => originalCwd === p || originalCwd.startsWith(p + "/"),
+  );
+  if (cwdRemoved) {
+    console.log(`\nYour shell is in a removed worktree. Run: cd ${mainPath}`);
+  }
+}
+
 async function main() {
+  const options = parseArgs(process.argv.slice(2));
+
   if (!isInsideGitRepo()) {
     console.error("Not inside a git repository.");
     process.exit(1);
@@ -34,6 +80,14 @@ async function main() {
   // A detached worktree has no branch to look up, so it is never pending.
   for (const wt of worktrees) {
     if (!wt.branch) wt.prState = null;
+  }
+
+  if (options.auto) {
+    const outcome = await runAuto(worktrees);
+    warnIfCwdRemoved(outcome.removedPaths, originalCwd, mainPath);
+    // Set the code rather than exiting, so a piped report is never truncated.
+    process.exitCode = outcome.failed > 0 ? 1 : 0;
+    return;
   }
 
   // Paint the list right away, then fill in the slow per-worktree signals
@@ -89,11 +143,7 @@ async function main() {
   await dirtyChecked;
 
   // Confirm dirty / locked worktrees sequentially
-  const toRemove: Array<{
-    worktree: Worktree;
-    force: boolean;
-    locked: boolean;
-  }> = [];
+  const toRemove: RemovalTarget[] = [];
 
   for (const wt of selected) {
     const locked = wt.lockReason !== null;
@@ -115,52 +165,13 @@ async function main() {
   // Remove in parallel with spinners
   console.log(`\nRemoving ${toRemove.length} worktree${toRemove.length > 1 ? "s" : ""}...\n`);
 
-  const spinners = createSpinnerGroup();
-  const removedPaths = new Set<string>();
-
-  await Promise.allSettled(
-    toRemove.map(async ({ worktree: wt, force, locked }) => {
-      const label = wt.branch ?? wt.path;
-      const spinner = spinners.create(label);
-
-      try {
-        await removeWorktree(wt.path, { force, locked });
-        removedPaths.add(wt.path);
-      } catch (err) {
-        spinner.fail(
-          `${label}: ${err instanceof Error ? err.message : err}`,
-        );
-        return;
-      }
-
-      if (wt.branch) {
-        spinner.update(`${label} — deleting branch...`);
-        try {
-          await deleteBranch(wt.branch);
-          spinner.succeed(`${label} — worktree + branch removed`);
-        } catch {
-          spinner.warn(`${label} — worktree removed, branch could not be deleted`);
-        }
-      } else {
-        spinner.succeed(`${label} — worktree removed`);
-      }
-    }),
-  );
-
-  spinners.stop();
+  const { removedPaths } = await removeAll(toRemove, createSpinnerGroup());
 
   console.log("\nPruning stale worktree references...");
   await pruneWorktrees();
   console.log("Done.");
 
-  const cwdRemoved = [...removedPaths].some(
-    (p) => originalCwd === p || originalCwd.startsWith(p + "/"),
-  );
-  if (cwdRemoved) {
-    console.log(
-      `\nYour shell is in a removed worktree. Run: cd ${mainPath}`,
-    );
-  }
+  warnIfCwdRemoved(removedPaths, originalCwd, mainPath);
 }
 
 main().catch((err: Error) => {

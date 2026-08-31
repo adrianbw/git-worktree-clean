@@ -14,49 +14,21 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 OUTDIR="${1:-$REPO/docs}"
 
+# shellcheck source=demo-repo.sh
+source "$HERE/demo-repo.sh"
+
 WORK="$(mktemp -d -t gwtc-shots)"
 trap 'rm -rf "$WORK"' EXIT
-
-# `git worktree list` reports worktrees ordered by directory name, so these
-# names determine row order in every screenshot.
-DEMO_BRANCHES=(
-  feature/api-pagination
-  feature/dark-mode
-  fix/login-redirect
-  feature/billing-v2
-  spike/perf-profiling
-  chore/bump-deps
-)
-
-build_demo_repo() {
-  rm -rf "$WORK/repo" "$WORK/wt"
-  git init -q -b main "$WORK/repo"
-  git -C "$WORK/repo" config user.email screenshots@example.com
-  git -C "$WORK/repo" config user.name Screenshots
-  git -C "$WORK/repo" config commit.gpgsign false
-  echo "# acme-app" > "$WORK/repo/README.md"
-  git -C "$WORK/repo" add -A
-  git -C "$WORK/repo" commit -qm "init"
-
-  for b in "${DEMO_BRANCHES[@]}"; do
-    git -C "$WORK/repo" worktree add -q -b "$b" "$WORK/wt/$(basename "$b")" main
-  done
-  git -C "$WORK/repo" worktree add -q --detach "$WORK/wt/detached" main
-
-  # One dirty worktree and one locked worktree, so `⚠ dirty` and `🔒 locked`
-  # both appear and the force-removal prompts have something to ask about.
-  echo "wip" > "$WORK/wt/billing-v2/scratch.txt"
-  git -C "$WORK/repo" worktree lock --reason "long-running benchmark" "$WORK/wt/perf-profiling"
-}
 
 # Runs the app under a pty, feeding it keystrokes from stdin. A pty is required:
 # the TUI needs raw mode, and color switches off when stderr is not a TTY.
 run_under_pty() {
   local outfile="$1"
+  shift
   if script -q /dev/null true >/dev/null 2>&1; then
-    script -q "$outfile" "$REPO/bin/git-worktree-clean"      # BSD / macOS
+    script -q "$outfile" "$REPO/bin/git-worktree-clean" "$@"      # BSD / macOS
   else
-    script -q -e -c "$REPO/bin/git-worktree-clean" "$outfile" # GNU / Linux
+    script -q -e -c "$REPO/bin/git-worktree-clean $*" "$outfile"  # GNU / Linux
   fi
 }
 
@@ -125,6 +97,16 @@ printf "y";      sleep 3.0
 render "$WORK/force.ansi" "$OUTDIR/force.svg" --trim-top 8 \
   --title "git-worktree-clean — force removal"
 
+echo "→ auto.svg (--auto sweeps merged/closed with no TUI)"
+build_demo_repo
+# feature/dark-mode has a merged PR; dirtying it gives --auto something to
+# report as skipped alongside the worktrees it removes.
+echo "wip" > "$WORK/wt/dark-mode/scratch.txt"
+# The `sleep` holds stdin open: --auto never reads a key, and an stdin that
+# closes first makes the pty echo a stray ^D into the capture.
+( cd "$WORK/repo" && sleep 8 | run_under_pty "$WORK/auto.ansi" --auto ) >/dev/null 2>&1 || true
+render "$WORK/auto.ansi" "$OUTDIR/auto.svg" --title "git-worktree-clean --auto"
+
 # The demo repo's worktrees live under $WORK, but its branches were only ever
 # local to it, so nothing outside $WORK needs cleaning up.
-echo "✓ Wrote 5 SVGs to $OUTDIR"
+echo "✓ Wrote 6 SVGs to $OUTDIR"

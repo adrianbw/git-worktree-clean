@@ -4,6 +4,14 @@
 #
 # GH_STUB_DELAY controls how long each lookup takes, which is what makes the
 # "still checking" states reachable in a capture.
+
+# --auto probes `gh --version` before it trusts any PR state, so answer that
+# the way the real CLI does, and without the lookup delay.
+if [ "${1:-}" = "--version" ]; then
+  echo "gh version 2.0.0 (stub)"
+  exit 0
+fi
+
 branch=""
 next_is_head=0
 for arg in "$@"; do

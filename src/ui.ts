@@ -1,3 +1,4 @@
+import { createColors } from "./color.js";
 import type { Worktree } from "./types.js";
 
 export type TuiResult =
@@ -5,18 +6,7 @@ export type TuiResult =
   | { type: "open"; worktree: Worktree }
   | { type: "quit" };
 
-const colorEnabled =
-  !process.env.NO_COLOR && process.stderr.isTTY;
-
-const c = (code: string, s: string) =>
-  colorEnabled ? `\x1b[${code}m${s}\x1b[0m` : s;
-
-const dim = (s: string) => c("2", s);
-const bold = (s: string) => c("1", s);
-const cyan = (s: string) => c("96", s);
-const green = (s: string) => c("32", s);
-const yellow = (s: string) => c("33", s);
-const red = (s: string) => c("31", s);
+const { dim, bold, cyan, green, yellow, red } = createColors(process.stderr);
 
 const HEADER = dim(
   "Select worktrees (↑/↓ move, space toggle, c clean merged/closed, o open, enter confirm, q quit):",
@@ -183,17 +173,20 @@ export function runTui(worktrees: Worktree[]): Tui {
   };
 }
 
-export function confirmForceRemoval(wt: Worktree): Promise<boolean> {
-  const label = wt.branch ?? wt.path;
+/** Why `wt` needs `--force`, e.g. "has uncommitted changes and is locked". */
+export function forceRemovalReasons(wt: Worktree): string {
   const reasons: string[] = [];
   if (wt.isDirty) reasons.push("has uncommitted changes");
   if (wt.lockReason !== null) {
-    reasons.push(
-      wt.lockReason ? `is locked (${wt.lockReason})` : "is locked",
-    );
+    reasons.push(wt.lockReason ? `is locked (${wt.lockReason})` : "is locked");
   }
+  return reasons.join(" and ");
+}
+
+export function confirmForceRemoval(wt: Worktree): Promise<boolean> {
+  const label = wt.branch ?? wt.path;
   process.stdout.write(
-    `⚠ "${label}" ${reasons.join(" and ")}. Force remove? (y/n) `,
+    `⚠ "${label}" ${forceRemovalReasons(wt)}. Force remove? (y/n) `,
   );
 
   return new Promise((resolve) => {
