@@ -101,6 +101,20 @@ export function isDirty(path: string): Promise<boolean> {
 }
 
 /**
+ * Whether the `gh` CLI can run at all. The TUI degrades gracefully without it
+ * (the merged/closed tags are simply absent), but --auto acts on those tags, so
+ * it checks first rather than reporting an empty sweep.
+ */
+export async function isGhAvailable(): Promise<boolean> {
+  try {
+    await exec("gh --version", { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns the state of the most recent PR for `branch` on the GitHub remote,
  * or null if there is none. Returns null on any failure (gh not installed, no
  * remote, no PR, etc.) — a missing PR signal should never block worktree

@@ -13,11 +13,15 @@ writes nothing outside `docs/` and a temp directory.
 
 1. **Builds a throwaway repo** under `mktemp -d` with seven worktrees chosen to
    cover every badge at once: three merged, one closed, one with an open PR, one
-   dirty, one locked (with a reason), and one detached.
+   dirty, one locked (with a reason), and one detached. That build lives in
+   `demo-repo.sh`, which is also runnable on its own (`demo-repo.sh <dir>`) when
+   you want the same fixture to try something against by hand.
 2. **Runs the real binary under a pty.** A pty is not optional — the TUI needs
    raw-mode stdin, and color switches itself off when stderr isn't a TTY.
    `script` provides one; keystrokes are piped in with `sleep`s between them to
-   let background work land (or deliberately not land) first.
+   let background work land (or deliberately not land) first. The `--auto`
+   capture takes no keystrokes, but still pipes in a `sleep`: an stdin that
+   closes first makes the pty echo a stray `^D` into the capture.
 3. **Renders the captured ANSI to SVG** with `render.mjs`.
 
 Everything in the screenshots is genuine output — real `git worktree remove`,
@@ -39,7 +43,7 @@ still outstanding.
 ## Why a hand-rolled renderer
 
 `render.mjs` is ~150 lines and has no dependencies, which beat adding a toolchain
-(`asciinema` + `agg`, `vhs`, `freeze`) for five images. It models the screen as a
+(`asciinema` + `agg`, `vhs`, `freeze`) for six images. It models the screen as a
 list of line buffers rather than a cell grid, which is sound here because the app
 only ever emits `ESC[2K` + a whole line + newline, or moves the cursor up by whole
 lines. It handles just the escapes the app actually uses: `ESC[2K`, `ESC[{n}A/B`,

@@ -1,6 +1,6 @@
 # git-worktree-clean
 
-An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs/git-worktree). Lists your worktrees, lets you select which ones to remove, and deletes the associated branches — all with a custom terminal UI. Also doubles as a worktree picker: hit `o` on any row to `cd` your shell straight into that worktree.
+An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs/git-worktree). Lists your worktrees, lets you select which ones to remove, and deletes the associated branches — all with a custom terminal UI. Also doubles as a worktree picker: hit `o` on any row to `cd` your shell straight into that worktree. For unattended use, `--auto` skips the UI and sweeps the merged and closed worktrees on its own.
 
 ![The selection TUI, showing merged, dirty, closed and locked worktrees](docs/tui.svg)
 
@@ -74,6 +74,24 @@ Press `o` on any row to `cd` your parent shell into that worktree's path and exi
 
 If the shell function isn't installed (e.g., you ran the binary directly), pressing `o` prints the chosen path along with a hint to re-run `install.sh`, since a subprocess can't change its parent shell's directory on its own.
 
+### Headless `--auto` mode
+`git-worktree-clean --auto` does the same sweep the `c` key does, with no TUI and no keyboard:
+
+```sh
+git-worktree-clean --auto
+```
+
+![--auto removing three worktrees and reporting one skipped](docs/auto.svg)
+
+- Resolves every `git status` and PR lookup first, then removes each worktree whose most recent PR is **merged** or **closed**, deletes its branch, and prunes
+- **Only clean worktrees are removed.** A merged or closed worktree that is dirty or locked would need `--force`, and there is nobody to confirm that, so it is named in a `Skipping …` block with its reason and left alone
+- Worktrees with an open PR, no PR, or a detached HEAD are never touched
+- Never reads stdin and never moves the cursor, so the report survives being piped to a file or a log. Color still switches itself off when stdout isn't a TTY, or when `NO_COLOR` is set
+- Ends with a one-line tally: `Done. Removed 3, skipped 1, failed 0.`
+- Requires the `gh` CLI. The TUI degrades quietly without it (the merged/closed tags simply never appear), but `--auto` acts on exactly those tags, so it says what is missing and exits `1` rather than reporting an empty sweep
+
+`-h` / `--help` prints the usage; any other argument is an error.
+
 ### Self-protection against cwd-pulled-from-under-you
 Before doing anything, the tool `chdir`s into the main worktree. That way, if you happen to be sitting inside a worktree you're about to remove, the removal doesn't break subsequent git commands (or leave your shell stranded). If your original shell `cwd` was inside a removed worktree, the tool prints a final reminder telling you to `cd` into the main worktree.
 
@@ -86,8 +104,10 @@ The TUI and the removal spinners are drawn on **stderr**. Stdout carries the `y/
 
 ### Exit codes
 - `0` — cleanup finished, or you quit with `q`/`ctrl-c`, or there was nothing to do
-- `1` — not inside a git repository, `o` was pressed without the shell function installed, or an unexpected error was thrown
+- `1` — not inside a git repository, `o` was pressed without the shell function installed, an unknown argument was passed, `--auto` ran without `gh`, at least one worktree failed to be removed under `--auto`, or an unexpected error was thrown
 - `130` — `ctrl-c` at a `y/n` force-removal prompt
+
+A worktree that is removed but whose branch survives counts as success in both modes: the removal is what was asked for, and the branch is reported as a warning.
 
 ## Install
 
@@ -116,7 +136,14 @@ git-worktree-clean
 
 You'll see a checkbox list of every worktree except the main one. Select the ones you want removed and press enter, press `c` to sweep every merged/closed worktree at once, or press `o` to jump into the worktree under the cursor.
 
-The tool takes no arguments or flags; the only environment variables it reads are `GIT_WORKTREE_CLEAN_CD_FILE` (set for you by the shell function) and `NO_COLOR`.
+Or skip the UI entirely:
+
+```sh
+git-worktree-clean --auto    # remove every clean merged/closed worktree, then report
+git-worktree-clean --help    # usage
+```
+
+Those are the only flags. The only environment variables the tool reads are `GIT_WORKTREE_CLEAN_CD_FILE` (set for you by the shell function) and `NO_COLOR`.
 
 ## How the launcher script works
 
@@ -170,17 +197,18 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 
 1. Checks you're inside a git repo (`git rev-parse --git-dir`)
 2. Runs `git worktree list --porcelain` and parses the porcelain output into structured worktree records — pulling out the path, HEAD, branch ref, and any `locked` reason. The first block (the main worktree) is skipped from the picker but its path is kept for `chdir`-ing into safely.
-3. **Renders the TUI immediately**, with `isDirty` and `prState` still unresolved
-4. In the background, and all concurrently:
+3. With `--auto`, checks that `gh` runs, awaits every `git status` and PR lookup, then removes the clean merged/closed worktrees and prints the report — the checks, removal and prune below, without the TUI or the prompts. Otherwise:
+4. **Renders the TUI immediately**, with `isDirty` and `prState` still unresolved
+5. In the background, and all concurrently:
    - `git -C <path> status --porcelain` per worktree to detect uncommitted changes
    - `gh pr list --head <branch> --state all --json state --limit 1` per branch, reading the most recent PR's state to flag `merged` and `closed` (10s timeout, soft-fails)
 
    Each result mutates its worktree record and repaints the affected row. Detached worktrees skip the `gh` call entirely.
-5. User toggles selections and confirms, sweeps every merged/closed worktree with `c`, opens a worktree, or quits
-6. Waits for the `status` checks, then prompts `y/n` per selected dirty/locked worktree to confirm force removal — including for worktrees that `c` selected
-7. Removes selected worktrees in parallel (`git worktree remove`, with `--force` for dirty and `--force --force` for locked), deletes their branches (`git branch -D`), and shows progress with animated spinners
-8. Runs `git worktree prune` to clean up stale references
-9. Warns if the shell's original `cwd` was inside a removed worktree
+6. User toggles selections and confirms, sweeps every merged/closed worktree with `c`, opens a worktree, or quits
+7. Waits for the `status` checks, then prompts `y/n` per selected dirty/locked worktree to confirm force removal — including for worktrees that `c` selected
+8. Removes selected worktrees in parallel (`git worktree remove`, with `--force` for dirty and `--force --force` for locked), deletes their branches (`git branch -D`), and shows progress with animated spinners
+9. Runs `git worktree prune` to clean up stale references
+10. Warns if the shell's original `cwd` was inside a removed worktree
 
 ### Startup
 
@@ -196,10 +224,13 @@ On a monorepo with 9 worktrees, time-to-first-frame went from **~3.7s to ~140ms*
 
 - `bin/git-worktree-clean` — bash launcher (resolves symlinks, prefers `dist/`, falls back to `tsx`)
 - `install.sh` — installs deps, builds, symlinks the binary, adds the shell function
-- `src/main.ts` — orchestrates the flow and drives the background status/PR checks
+- `src/main.ts` — parses the flags, then orchestrates either flow and drives the background status/PR checks
+- `src/auto.ts` — the headless `--auto` flow and its plain-text report
 - `src/git.ts` — git command wrappers (list, dirty check, PR-state check, remove, branch delete, prune)
+- `src/remove.ts` — the parallel removal pass both flows share, reporting through spinners or plain lines
 - `src/ui.ts` — the selection TUI and the dirty/locked confirmation prompt
 - `src/spinner.ts` — the multi-line animated spinner group used during parallel removal
+- `src/color.ts` — ANSI helpers, switched off per output stream
 - `src/types.ts` — the `Worktree` record shape
 - `docs/` — the SVG screenshots used in this README
 - `docs/screenshots/` — the harness that regenerates them ([details](docs/screenshots/README.md))
