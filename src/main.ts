@@ -16,7 +16,7 @@ import type { Worktree } from "./types.js";
 const USAGE = `Usage: git-worktree-clean [options]
 
 Options:
-  --auto      Remove every merged/closed worktree without opening the TUI and
+  -a, --auto  Remove every merged/closed worktree without opening the TUI and
               report the result. Dirty and locked worktrees are listed, not
               removed. Requires the gh CLI.
   -h, --help  Show this help.`;
@@ -29,7 +29,7 @@ function parseArgs(argv: string[]): Options {
   const options: Options = { auto: false };
 
   for (const arg of argv) {
-    if (arg === "--auto") {
+    if (arg === "-a" || arg === "--auto") {
       options.auto = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(USAGE);
