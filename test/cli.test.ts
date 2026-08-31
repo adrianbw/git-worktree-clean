@@ -17,7 +17,7 @@ describe("command line", () => {
       const { status, stdout } = runGwc(solo, [flag]);
       assert.equal(status, 0, flag);
       assert.match(stdout, /Usage: git-worktree-clean \[options\]/, flag);
-      assert.match(stdout, /--auto/, flag);
+      assert.match(stdout, /-a, --auto/, flag);
     }
   });
 
@@ -31,6 +31,16 @@ describe("command line", () => {
     assert.match(stderr, /Usage: git-worktree-clean \[options\]/);
   });
 
+  it("does not bundle short flags", (t) => {
+    const solo = soloRepo(t);
+
+    const { status, stderr } = runGwc(solo, ["-ah"]);
+
+    assert.equal(status, 1);
+    assert.match(stderr, /Unknown argument: -ah/);
+    assert.match(stderr, /Usage: git-worktree-clean \[options\]/);
+  });
+
   it("exits quietly when the repo has only a main worktree", (t) => {
     const solo = soloRepo(t);
 
@@ -40,7 +50,7 @@ describe("command line", () => {
     assert.match(stdout, /No additional worktrees found\./);
   });
 
-  it("refuses --auto without the gh CLI, and removes nothing", (t) => {
+  it("refuses --auto and -a without the gh CLI, and removes nothing", (t) => {
     const demo = demoRepo(t);
     const bin = nodeOnlyBin(t);
     assert.equal(
@@ -49,13 +59,15 @@ describe("command line", () => {
       "the stripped PATH must not resolve gh",
     );
 
-    const { status, stderr } = runGwc(demo.repo, ["--auto"], {
-      ghOnPath: false,
-      nodeOnlyBin: bin,
-    });
+    for (const flag of ["--auto", "-a"]) {
+      const { status, stderr } = runGwc(demo.repo, [flag], {
+        ghOnPath: false,
+        nodeOnlyBin: bin,
+      });
 
-    assert.equal(status, 1);
-    assert.match(stderr, /--auto needs the gh CLI/);
-    assert.equal(worktreeBranches(demo.repo).length, 7);
+      assert.equal(status, 1, flag);
+      assert.match(stderr, /--auto needs the gh CLI/, flag);
+      assert.equal(worktreeBranches(demo.repo).length, 7, flag);
+    }
   });
 });
