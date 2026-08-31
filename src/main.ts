@@ -142,7 +142,6 @@ async function main() {
   // background checks here — by now they have usually long since finished.
   await dirtyChecked;
 
-  // Confirm dirty / locked worktrees sequentially
   const toRemove: RemovalTarget[] = [];
 
   for (const wt of selected) {
@@ -162,7 +161,6 @@ async function main() {
     process.exit(0);
   }
 
-  // Remove in parallel with spinners
   console.log(`\nRemoving ${toRemove.length} worktree${toRemove.length > 1 ? "s" : ""}...\n`);
 
   const { removedPaths } = await removeAll(toRemove, createSpinnerGroup());
