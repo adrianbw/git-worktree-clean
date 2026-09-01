@@ -1,7 +1,11 @@
 import { createColors } from "./color.js";
 import { getPrState, isDirty, isGhAvailable, pruneWorktrees } from "./git.js";
 import { removeAll } from "./remove.js";
-import type { RemovalOutcome, RemovalReporter } from "./remove.js";
+import type {
+  RemovalOutcome,
+  RemovalReporter,
+  RemovalTarget,
+} from "./remove.js";
 import type { SpinnerLine } from "./spinner.js";
 import type { Worktree } from "./types.js";
 import { forceRemovalReasons } from "./ui.js";
@@ -36,9 +40,12 @@ function createPlainReporter(): RemovalReporter {
  * Headless counterpart to the TUI: resolve every signal, remove the worktrees
  * whose PR is merged or closed, and print what happened. Worktrees that would
  * need `--force` are listed rather than removed, since nobody is there to
- * confirm.
+ * confirm — unless `force` is set, which opts into removing them unattended.
  */
-export async function runAuto(worktrees: Worktree[]): Promise<RemovalOutcome> {
+export async function runAuto(
+  worktrees: Worktree[],
+  force: boolean,
+): Promise<RemovalOutcome> {
   if (!(await isGhAvailable())) {
     console.error(
       "--auto needs the gh CLI to tell merged and closed branches apart.\n" +
@@ -77,38 +84,60 @@ export async function runAuto(worktrees: Worktree[]): Promise<RemovalOutcome> {
     return { removedPaths: new Set(), failed: 0 };
   }
 
-  // Announced ahead of the removals: the skip set is known up front, and it
-  // reads better to name what survives before anything is deleted.
+  // Announced ahead of the removals: both sets are known up front, and it reads
+  // better to name what is at stake before anything is deleted.
   if (needsForce.length > 0) {
     const n = needsForce.length;
     console.log(
-      `\nSkipping ${n} merged/closed worktree${plural(n)} that ${n === 1 ? "needs" : "need"} force removal:`,
+      force
+        ? `\nForce-removing ${n} merged/closed worktree${plural(n)}:`
+        : `\nSkipping ${n} merged/closed worktree${plural(n)} that ${n === 1 ? "needs" : "need"} force removal:`,
     );
     for (const wt of needsForce) {
       console.log(
-        `  ${yellow("-")} ${wt.branch ?? wt.path} — ${forceRemovalReasons(wt)}`,
+        `  ${yellow(force ? "!" : "-")} ${wt.branch ?? wt.path} — ${forceRemovalReasons(wt)}`,
       );
     }
-    console.log(dim("  Run git-worktree-clean without --auto to remove these."));
+    if (!force) {
+      console.log(
+        dim(
+          "  Run git-worktree-clean without --auto, or add --force, to remove these.",
+        ),
+      );
+    }
+  }
+
+  // A locked worktree needs `--force` even when its tree is clean, so the flags
+  // are read off each worktree rather than shared across the batch.
+  const targets: RemovalTarget[] = clean.map((wt) => ({
+    worktree: wt,
+    force: false,
+    locked: false,
+  }));
+  if (force) {
+    for (const wt of needsForce) {
+      targets.push({
+        worktree: wt,
+        force: wt.isDirty === true,
+        locked: wt.lockReason !== null,
+      });
+    }
   }
 
   let outcome: RemovalOutcome = { removedPaths: new Set(), failed: 0 };
 
-  if (clean.length > 0) {
+  if (targets.length > 0) {
     console.log(
-      `\nRemoving ${clean.length} merged/closed worktree${plural(clean.length)}:`,
+      `\nRemoving ${targets.length} merged/closed worktree${plural(targets.length)}:`,
     );
-    outcome = await removeAll(
-      clean.map((wt) => ({ worktree: wt, force: false, locked: false })),
-      createPlainReporter(),
-    );
+    outcome = await removeAll(targets, createPlainReporter());
     console.log("\nPruning stale worktree references...");
     await pruneWorktrees();
   }
 
   console.log(
     `\nDone. Removed ${outcome.removedPaths.size}, ` +
-      `skipped ${needsForce.length}, failed ${outcome.failed}.`,
+      `skipped ${force ? 0 : needsForce.length}, failed ${outcome.failed}.`,
   );
   if (outcome.failed > 0) {
     console.error(

@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { parseArgs } from "node:util";
 import { runAuto } from "./auto.js";
 import {
   isInsideGitRepo,
@@ -16,31 +17,47 @@ import type { Worktree } from "./types.js";
 const USAGE = `Usage: git-worktree-clean [options]
 
 Options:
-  -a, --auto  Remove every merged/closed worktree without opening the TUI and
-              report the result. Dirty and locked worktrees are listed, not
-              removed. Requires the gh CLI.
-  -h, --help  Show this help.`;
+  -a, --auto   Remove every merged/closed worktree without opening the TUI and
+               report the result. Dirty and locked worktrees are listed, not
+               removed. Requires the gh CLI.
+  -f, --force  Under --auto, remove those listed dirty and locked worktrees too.
+               Destroys uncommitted work with no prompt. Inert on its own.
+  -h, --help   Show this help.
+
+Short flags bundle: -af is --auto --force.`;
 
 interface Options {
   auto: boolean;
+  force: boolean;
 }
 
-function parseArgs(argv: string[]): Options {
-  const options: Options = { auto: false };
-
-  for (const arg of argv) {
-    if (arg === "-a" || arg === "--auto") {
-      options.auto = true;
-    } else if (arg === "-h" || arg === "--help") {
-      console.log(USAGE);
-      process.exit(0);
-    } else {
-      console.error(`Unknown argument: ${arg}\n\n${USAGE}`);
-      process.exit(1);
-    }
+function parseOptions(argv: string[]): Options {
+  let values;
+  try {
+    // strict:true is what refuses `--auto=true`, positionals and `--`, so the
+    // "anything else is an error" guarantee needs no checks of our own.
+    ({ values } = parseArgs({
+      args: argv,
+      options: {
+        auto: { type: "boolean", short: "a" },
+        force: { type: "boolean", short: "f" },
+        help: { type: "boolean", short: "h" },
+      },
+      strict: true,
+    }));
+  } catch (err) {
+    // parseArgs names the offending token, down to a single bad letter inside a
+    // cluster: `-ax` is reported as `-x`.
+    console.error(`${err instanceof Error ? err.message : err}\n\n${USAGE}`);
+    process.exit(1);
   }
 
-  return options;
+  if (values.help) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+
+  return { auto: values.auto === true, force: values.force === true };
 }
 
 function warnIfCwdRemoved(
@@ -57,11 +74,22 @@ function warnIfCwdRemoved(
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  const options = parseOptions(process.argv.slice(2));
 
   if (!isInsideGitRepo()) {
     console.error("Not inside a git repository.");
     process.exit(1);
+  }
+
+  // --force only means anything to the unattended sweep: the interactive flow
+  // asks before every force removal, so there is nothing there for it to skip.
+  // Said here, ahead of every other early exit, so the flag is never silently
+  // inert.
+  if (options.force && !options.auto) {
+    console.error(
+      "-f/--force has no effect without -a/--auto — the interactive flow " +
+        "always asks before force-removing.",
+    );
   }
 
   const originalCwd = process.cwd();
@@ -83,7 +111,7 @@ async function main() {
   }
 
   if (options.auto) {
-    const outcome = await runAuto(worktrees);
+    const outcome = await runAuto(worktrees, options.force);
     warnIfCwdRemoved(outcome.removedPaths, originalCwd, mainPath);
     // Set the code rather than exiting, so a piped report is never truncated.
     process.exitCode = outcome.failed > 0 ? 1 : 0;

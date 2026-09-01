@@ -18,6 +18,7 @@ describe("command line", () => {
       assert.equal(status, 0, flag);
       assert.match(stdout, /Usage: git-worktree-clean \[options\]/, flag);
       assert.match(stdout, /-a, --auto/, flag);
+      assert.match(stdout, /-f, --force/, flag);
     }
   });
 
@@ -27,18 +28,36 @@ describe("command line", () => {
     const { status, stderr } = runGwc(solo, ["--nope"]);
 
     assert.equal(status, 1);
-    assert.match(stderr, /Unknown argument: --nope/);
+    assert.match(stderr, /Unknown option '--nope'/);
     assert.match(stderr, /Usage: git-worktree-clean \[options\]/);
   });
 
-  it("does not bundle short flags", (t) => {
+  it("bundles short flags, and names a bad letter on its own", (t) => {
     const solo = soloRepo(t);
 
-    const { status, stderr } = runGwc(solo, ["-ah"]);
+    const help = runGwc(solo, ["-ah"]);
+    assert.equal(help.status, 0);
+    assert.match(help.stdout, /Usage: git-worktree-clean \[options\]/);
 
-    assert.equal(status, 1);
-    assert.match(stderr, /Unknown argument: -ah/);
-    assert.match(stderr, /Usage: git-worktree-clean \[options\]/);
+    const bad = runGwc(solo, ["-ax"]);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /Unknown option '-x'/);
+    assert.match(bad.stderr, /Usage: git-worktree-clean \[options\]/);
+  });
+
+  it("warns that -f alone is inert, and stays quiet when bundled with -a", (t) => {
+    const solo = soloRepo(t);
+
+    // soloRepo exits at "No additional worktrees found." — the only path a test
+    // can reach, since anything with worktrees blocks in the TUI waiting on a
+    // keypress.
+    const alone = runGwc(solo, ["-f"]);
+    assert.equal(alone.status, 0);
+    assert.match(alone.stderr, /-f\/--force has no effect without -a\/--auto/);
+
+    const bundled = runGwc(solo, ["-af"]);
+    assert.equal(bundled.status, 0);
+    assert.doesNotMatch(bundled.stderr, /no effect/);
   });
 
   it("exits quietly when the repo has only a main worktree", (t) => {
