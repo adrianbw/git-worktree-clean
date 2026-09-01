@@ -1,6 +1,6 @@
 # git-worktree-clean
 
-An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs/git-worktree). Lists your worktrees, lets you select which ones to remove, and deletes the associated branches — all with a custom terminal UI. Also doubles as a worktree picker: hit `o` on any row to `cd` your shell straight into that worktree. For unattended use, `--auto` skips the UI and sweeps the merged and closed worktrees on its own.
+An interactive CLI tool for cleaning up [git worktrees](https://git-scm.com/docs/git-worktree). Lists your worktrees, lets you select which ones to remove, and deletes the associated branches — all with a custom terminal UI. Also doubles as a worktree picker: hit `o` on any row to `cd` your shell straight into that worktree. For unattended use, `--auto` skips the UI and sweeps the merged and closed worktrees on its own, and `--force` extends that sweep to the dirty and locked ones.
 
 ![The selection TUI, showing merged, dirty, closed and locked worktrees](docs/tui.svg)
 
@@ -84,13 +84,14 @@ git-worktree-clean --auto
 ![--auto removing three worktrees and reporting one skipped](docs/auto.svg)
 
 - Resolves every `git status` and PR lookup first, then removes each worktree whose most recent PR is **merged** or **closed**, deletes its branch, and prunes
-- **Only clean worktrees are removed.** A merged or closed worktree that is dirty or locked would need `--force`, and there is nobody to confirm that, so it is named in a `Skipping …` block with its reason and left alone
+- **Only clean worktrees are removed by default.** A merged or closed worktree that is dirty or locked would need `--force`, and there is nobody to confirm that, so it is named in a `Skipping …` block with its reason and left alone
+- **`--force` removes those too.** They are named up front in a `Force-removing …` block with the same reasons, then removed alongside the clean ones (`--force` for a dirty tree, twice for a locked one). This destroys uncommitted work with no prompt, which is why it takes an explicit flag; the tally counts them as removed rather than skipped
 - Worktrees with an open PR, no PR, or a detached HEAD are never touched
 - Never reads stdin and never moves the cursor, so the report survives being piped to a file or a log. Color still switches itself off when stdout isn't a TTY, or when `NO_COLOR` is set
 - Ends with a one-line tally: `Done. Removed 3, skipped 1, failed 0.`
 - Requires the `gh` CLI. The TUI degrades quietly without it (the merged/closed tags simply never appear), but `--auto` acts on exactly those tags, so it says what is missing and exits `1` rather than reporting an empty sweep
 
-`-a` / `--auto` and `-h` / `--help` are the accepted spellings; each is matched whole, so short flags do not bundle and `-ah` is an error. Any other argument is an error.
+`-a` / `--auto`, `-f` / `--force` and `-h` / `--help` are the accepted spellings, parsed by [`node:util.parseArgs`](https://nodejs.org/api/util.html#utilparseargsconfig-options) in strict mode. Short flags bundle, so `-af` is `--auto --force`, and a bad letter inside a bundle is named on its own: `-ax` reports `Unknown option '-x'`. Attached values (`--auto=true`), positional arguments and `--` are all errors, as is any unrecognised flag. `-f` on its own is accepted but does nothing, and says so on stderr before the TUI opens.
 
 ### Self-protection against cwd-pulled-from-under-you
 Before doing anything, the tool `chdir`s into the main worktree. That way, if you happen to be sitting inside a worktree you're about to remove, the removal doesn't break subsequent git commands (or leave your shell stranded). If your original shell `cwd` was inside a removed worktree, the tool prints a final reminder telling you to `cd` into the main worktree.
@@ -140,6 +141,7 @@ Or skip the UI entirely:
 
 ```sh
 git-worktree-clean --auto    # remove every clean merged/closed worktree, then report
+git-worktree-clean -af       # the same sweep, plus the dirty and locked ones, no prompts
 git-worktree-clean --help    # usage
 ```
 
@@ -197,7 +199,7 @@ It creates a temp file, hands its path to the binary via `GIT_WORKTREE_CLEAN_CD_
 
 1. Checks you're inside a git repo (`git rev-parse --git-dir`)
 2. Runs `git worktree list --porcelain` and parses the porcelain output into structured worktree records — pulling out the path, HEAD, branch ref, and any `locked` reason. The first block (the main worktree) is skipped from the picker but its path is kept for `chdir`-ing into safely.
-3. With `--auto`, checks that `gh` runs, awaits every `git status` and PR lookup, then removes the clean merged/closed worktrees and prints the report — the checks, removal and prune below, without the TUI or the prompts. Otherwise:
+3. With `--auto`, checks that `gh` runs, awaits every `git status` and PR lookup, then removes the clean merged/closed worktrees — plus the dirty and locked ones when `--force` is set — and prints the report: the checks, removal and prune below, without the TUI or the prompts. Otherwise:
 4. **Renders the TUI immediately**, with `isDirty` and `prState` still unresolved
 5. In the background, and all concurrently:
    - `git -C <path> status --porcelain` per worktree to detect uncommitted changes

@@ -71,6 +71,32 @@ describe("--auto", () => {
     assert.ok(worktreeBranches(demo.repo).includes("chore/bump-deps"));
   });
 
+  it("force-removes a dirty merged worktree with -af", (t) => {
+    const demo = demoRepo(t);
+    dirty(demo.worktree("feature/dark-mode"));
+
+    const { status, stdout } = runGwc(demo.repo, ["-af"]);
+
+    assert.equal(status, 0);
+    assert.match(stdout, /Force-removing 1 merged\/closed worktree:/);
+    assert.match(stdout, /feature\/dark-mode — has uncommitted changes/);
+    assert.match(stdout, /Done\. Removed 4, skipped 0, failed 0\./);
+    assert.ok(!worktreeBranches(demo.repo).includes("feature/dark-mode"));
+    assert.ok(!localBranches(demo.repo).includes("feature/dark-mode"));
+  });
+
+  it("force-removes a locked merged worktree, which git needs --force twice for", (t) => {
+    const demo = demoRepo(t);
+    lock(demo.repo, demo.worktree("chore/bump-deps"), "keeping this one");
+
+    const { status, stdout } = runGwc(demo.repo, ["--auto", "--force"]);
+
+    assert.equal(status, 0);
+    assert.match(stdout, /chore\/bump-deps — is locked \(keeping this one\)/);
+    assert.match(stdout, /Done\. Removed 4, skipped 0, failed 0\./);
+    assert.ok(!worktreeBranches(demo.repo).includes("chore/bump-deps"));
+  });
+
   it("reports nothing to remove when no PR is merged or closed", (t) => {
     const demo = demoRepo(t);
     runGwc(demo.repo, ["--auto"]);
