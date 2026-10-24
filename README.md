@@ -132,7 +132,7 @@ Requirements: `git`, Node.js, and [pnpm](https://pnpm.io/installation) (or corep
 From inside any git repository:
 
 ```sh
-git-worktree-clean
+git-worktree-clean   # or: gwc
 ```
 
 You'll see a checkbox list of every worktree except the main one. Select the ones you want removed and press enter, press `c` to sweep every merged/closed worktree at once, or press `o` to jump into the worktree under the cursor.
