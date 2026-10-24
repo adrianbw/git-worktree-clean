@@ -123,7 +123,7 @@ cd git-worktree-clean
 2. Runs `pnpm build` to compile `src/` to `dist/` — this is what keeps startup fast (see [Startup](#startup)).
 3. Symlinks `bin/git-worktree-clean` into `~/.local/bin/`.
 4. Appends a small shell function to `~/.zshrc` and `~/.bashrc` so the `o` (open) key can `cd` your parent shell. The block is idempotent — re-running `install.sh` won't add it twice.
-5. Warns if `~/.local/bin` isn't on your `PATH`.
+5. Adds `~/.local/bin` to `PATH` in those same files when it isn't already there, and warns if the current shell still lacks it (reload your shell to pick it up).
 
 Requirements: `git`, Node.js, and [pnpm](https://pnpm.io/installation) (or corepack). The `gh` CLI is optional and only used to detect merged/closed PRs.
 

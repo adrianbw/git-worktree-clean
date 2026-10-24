@@ -47,7 +47,30 @@ echo "→ Symlinked $LINK → $WRAPPER"
 # into whatever path the binary writes to that file.
 install_shell_function() {
   local rcfile="$1"
-  [ -f "$rcfile" ] || return 0
+  # Create the rc file if it doesn't exist so the install takes effect in
+  # fresh environments (e.g. a new HOME with no shell profile yet).
+  if [ ! -f "$rcfile" ]; then
+    [ -w "$(dirname "$rcfile")" ] || return 0
+    : > "$rcfile"
+  fi
+  [ -w "$rcfile" ] || return 0
+
+  # Make sure ~/.local/bin is on PATH in this profile. Without this the
+  # symlink we created above (and the shell function below) are invisible
+  # to a fresh shell, so the command appears "not installed".
+  if ! grep -q '.local/bin' "$rcfile"; then
+    cat >> "$rcfile" <<'EOF'
+
+# >>> git-worktree-clean PATH >>>
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+# <<< git-worktree-clean PATH <<<
+EOF
+    echo "→ Added ~/.local/bin to PATH in $rcfile"
+  fi
+
   if grep -q "git-worktree-clean shell function" "$rcfile"; then
     echo "→ Shell function already installed in $rcfile"
     return 0
