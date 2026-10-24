@@ -73,9 +73,8 @@ EOF
 
   if grep -q "git-worktree-clean shell function" "$rcfile"; then
     echo "→ Shell function already installed in $rcfile"
-    return 0
-  fi
-  cat >> "$rcfile" <<'EOF'
+  else
+    cat >> "$rcfile" <<'EOF'
 
 # >>> git-worktree-clean shell function >>>
 git-worktree-clean() {
@@ -91,7 +90,20 @@ git-worktree-clean() {
 }
 # <<< git-worktree-clean shell function <<<
 EOF
-  echo "→ Added shell function to $rcfile"
+    echo "→ Added shell function to $rcfile"
+  fi
+
+  # Short alias (and function fallback) for convenience.
+  if ! grep -q "alias gwc=" "$rcfile"; then
+    cat >> "$rcfile" <<'EOF'
+
+# >>> git-worktree-clean alias >>>
+gwc() { git-worktree-clean "$@"; }
+alias gwc='git-worktree-clean'
+# <<< git-worktree-clean alias <<<
+EOF
+    echo "→ Added gwc alias to $rcfile"
+  fi
 }
 
 install_shell_function "$HOME/.zshrc"
